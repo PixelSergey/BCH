@@ -1,29 +1,66 @@
 from sympy import GF, ZZ, Matrix, poly, Poly, div, Symbol, Add, Mul, Pow, Integer
-from sympy.abc import x
-from sympy.polys.galoistools import gf_gcdex
+from sympy.abc import x, z
+from sympy.polys.galoistools import gf_gcdex, gf_lcm
 import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning) 
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
-m = 3
-n = 2**m - 1
+def expand_expression(expression, var):
+    if isinstance(expression, Symbol):
+        return Poly(expression, var, domain=GF(2))
 
-t = 2
-generator = poly(x**8 + x**7 + x**6 + x**4 + 1, domain=GF(2))
-reducing = poly(x**4 + x + 1, domain=GF(2))
+    if isinstance(expression, Integer):
+        return Poly(expression, var, domain=GF(2))
+
+    if isinstance(expression, Mul):
+        result = Poly(1, var, domain=GF(2))
+        for term in expression.args:
+            result *= expand_expression(term, var)
+        return result
+    
+    if isinstance(expression, Add):
+        result = Poly(0, var, domain=GF(2))
+        for term in expression.args:
+            result += expand_expression(term, var)
+        return result
+    
+    if isinstance(expression, Pow):
+        base, exponent = expression.args
+        base = expand_expression(base, var)
+        exponent = int(exponent)
+        if exponent < 0:
+            base = find_inverse(base)
+            exponent = abs(exponent)
+
+        return Poly(base**exponent, var, domain=GF(2))
 
 
-# def find_minimal_polynomial(element):
-#     seen = set()
-#     i = 1
-#     result = Poly(1, x, domain=GF(2))
-#     while True:
-#         current = Poly(element**(2**i), x, domain=GF(2)) % reducing
-#         if current in seen:
-#             break
-#         seen.add(current)
-#         result *= current
-#     return result
+def find_minimal_polynomial(element, reducing):
+    seen = set()
+    i = 0
+    result = Poly(1, x)
+    while True:
+        current = Poly(element**(2**i), z) % reducing
+        if current in seen:
+            break
+        result *= Poly(x, x) - current.set_domain(ZZ)
+        seen.add(current)
+        i += 1
+
+    result = Poly(result, x, domain=GF(2)[z])
+    reduced = [expand_expression(coefficient, z)%reducing for coefficient in result.all_coeffs()]
+    assert(all([coefficient==0 or coefficient==1 for coefficient in reduced]))
+
+    result = Poly(reduced, x, domain=GF(2))
+    return result
+
+
+def find_generator(alpha, reducing, t):
+    generator = Poly(1, x, domain=GF(2))
+    for i in range(1, 2*t):
+        current = find_minimal_polynomial(alpha**i, reducing)
+        generator = Poly(gf_lcm(generator.all_coeffs(), current.all_coeffs(), 2, ZZ), x, domain=GF(2))
+    return generator
 
 
 def polynomify(integer):
@@ -48,55 +85,14 @@ def find_inverse(polynomial):
     return Poly(inv, x, domain=GF(2))
 
 
-def find_all_powers(polynomial):
+def find_all_powers(element, reducing):
     result = dict()
     for i in range(1, 16):
-        power = Poly(x**i, x, domain=GF(2)) % polynomial
+        power = Poly(element**i, z, domain=GF(2)) % reducing
         if tuple(power.all_coeffs()) in result:
             continue
         result[tuple(power.all_coeffs())] = i
     return result
-
-
-def expand_expression(expression):
-    if isinstance(expression, Symbol):
-        return Poly(expression, x, domain=GF(2))
-
-    if isinstance(expression, Integer):
-        return int(expression)
-
-    if isinstance(expression, Mul):
-        result = Poly(1, x, domain=GF(2))
-        for term in expression.args:
-            result *= expand_expression(term)
-        return result
-    
-    if isinstance(expression, Add):
-        result = Poly(0, x, domain=GF(2))
-        for term in expression.args:
-            result += expand_expression(term)
-        return result
-    
-    if isinstance(expression, Pow):
-        base, exponent = expression.args
-        base = expand_expression(base)
-        exponent = int(exponent)
-        if exponent < 0:
-            base = find_inverse(base)
-            exponent = abs(exponent)
-
-        return Poly(base**exponent, x, domain=GF(2))
-
-
-def find_all_roots(polynomial, mod=generator):
-    roots = []
-    for i in range(16):
-        pi = polynomify(i)
-        substitution = substitute(polynomial, pi) % mod
-        if substitution == 0:
-            roots.append(pi)
-    
-    return roots
 
 
 def encode_bch(bits):
@@ -130,11 +126,11 @@ def find_error_pos(locator):
         locator_poly += lambda_i * Poly(x**i, x, domain=GF(2))
     
     powers = []
-    for power in reducingpowers:
+    for power in alphapowers:
         root = substitute(locator_poly, Poly(power, x, domain=GF(2))) % reducing
         if root == 0:
             inverse = find_inverse(Poly(power, x, domain=GF(2)))
-            powers.append(reducingpowers[tuple((inverse%reducing).all_coeffs())])
+            powers.append(alphapowers[tuple((inverse%reducing).all_coeffs())])
 
     print(powers)
     return powers
@@ -157,17 +153,27 @@ def decode_bch(bits):
 
 
 if __name__ == "__main__":
-    reducingpowers = find_all_powers(reducing)
+    m = 3
+    n = 2**m - 1
+    t = 2
     
-    # print(reducingpowers)
-    # for power in reducingpowers:
-    #     print(reducingpowers[power], Poly(power, x, domain=GF(2)), substitute(generator, Poly(power, x, domain=GF(2)))%reducing)
+    reducing = Poly(z**4 + z + 1, domain=GF(2))
+    alpha = Poly(z, z, domain=GF(2))
+
+    generator = find_generator(alpha, reducing, t)
+    print(generator)
+
+    alphapowers = find_all_powers(alpha, reducing)
+    # print(alphapowers)
+    # print(alphapowers)
+    # for power in alphapowers:
+    #     print(alphapowers[power], Poly(power, x, domain=GF(2)), substitute(generator, Poly(power, x, domain=GF(2)))%reducing)
 
     #print(encode_bch([1,0,1,1,1,0]))
     #print(decode_bch([0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0]))
-    print(decode_bch([0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0]))
+    #print(decode_bch([0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0]))
     #                 ^15th pos      ^--^ errors (9 & 10)          ^ 0th position
-    print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0]))
+    #print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0]))
     #                          ^ 12           ^ 7
 
 
