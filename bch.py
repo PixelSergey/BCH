@@ -5,34 +5,35 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
-def expand_expression(expression, var):
+def expand_expression(expression, var, generator, reducing):
     if isinstance(expression, Symbol):
-        return Poly(expression, var, domain=GF(2))
+        return Poly(expression, var, domain=GF(2)) % reducing
 
     if isinstance(expression, Integer):
-        return Poly(expression, var, domain=GF(2))
+        return Poly(expression, var, domain=GF(2)) % reducing
 
     if isinstance(expression, Mul):
         result = Poly(1, var, domain=GF(2))
         for term in expression.args:
-            result *= expand_expression(term, var)
-        return result
+            result *= expand_expression(term, var, generator, reducing)
+        return result % reducing
     
     if isinstance(expression, Add):
         result = Poly(0, var, domain=GF(2))
         for term in expression.args:
-            result += expand_expression(term, var)
-        return result
+            result += expand_expression(term, var, generator, reducing)
+        return result % reducing
     
     if isinstance(expression, Pow):
         base, exponent = expression.args
-        base = expand_expression(base, var)
+        base = expand_expression(base, var, generator, reducing)
         exponent = int(exponent)
         if exponent < 0:
-            base = find_inverse(base)
+            assert(generator is not None)
+            base = find_inverse(base, reducing, z)
             exponent = abs(exponent)
 
-        return Poly(base**exponent, var, domain=GF(2))
+        return Poly(base**exponent, var, domain=GF(2)) % reducing
 
 
 def find_minimal_polynomial(element, reducing):
@@ -48,7 +49,7 @@ def find_minimal_polynomial(element, reducing):
         i += 1
 
     result = Poly(result, x, domain=GF(2)[z])
-    reduced = [expand_expression(coefficient, z)%reducing for coefficient in result.all_coeffs()]
+    reduced = [expand_expression(coefficient, z, None, reducing)%reducing for coefficient in result.all_coeffs()]
     assert(all([coefficient==0 or coefficient==1 for coefficient in reduced]))
 
     result = Poly(reduced, x, domain=GF(2))
@@ -64,25 +65,25 @@ def find_generator(alpha, reducing, t):
 
 
 def polynomify(integer):
-    return Poly([int(x) for x in list(bin(integer)[2:])], x, domain=GF(2))
+    return Poly([int(x) for x in list(bin(integer)[2:])], z, domain=GF(2))
 
 def integerify(polynomial):
     return sum([coeff*2**i for i,coeff in enumerate(polynomial.all_coeffs()[::-1])])
 
 
 def substitute(polynomial, substitution):
-    result = poly(0, x, domain=GF(2))
+    result = poly(0, z, domain=GF(2))
     for i, coeff in enumerate(polynomial.all_coeffs()[::-1]):
-        if coeff == 0:
-            continue
-        result += Poly(substitution**i, x, domain=GF(2))
+        result += Poly(coeff, z, domain=GF(2)) * Poly(substitution**i, z, domain=GF(2))
     return result
 
 
-def find_inverse(polynomial):
-    inv, _, gcd = gf_gcdex(polynomial.all_coeffs(), generator.all_coeffs(), 2, ZZ)
-    assert(gcd == [1])
-    return Poly(inv, x, domain=GF(2))
+def find_inverse(polynomial, reducing, var):
+    inv, _, gcd = gf_gcdex(polynomial.all_coeffs(), reducing.all_coeffs(), 2, ZZ)
+    if gcd != [1]:
+        print(polynomial)
+        assert(False)
+    return Poly(inv, var, domain=GF(2))
 
 
 def find_all_powers(element, reducing):
@@ -95,97 +96,119 @@ def find_all_powers(element, reducing):
     return result
 
 
-def encode_bch(bits):
+def find_all_roots(polynomial, alpha, reducing):
+    roots = []
+    for i in range(1,17):
+        root = substitute(polynomial, alpha**i) % reducing
+        if root == 0:
+            roots.append(alpha**i % reducing)
+    return roots
+
+
+def encode_bch(bits, generator):
     plaintext = Poly(bits, x, domain=GF(2))
     encoded = plaintext * generator
     return encoded.all_coeffs()
 
 
-def find_error_locator(syndromes):
+def find_error_locator(syndromes, generator, reducing, t):
     for i in range(t):
         nu = t-i  # Number of errors
-        syndrome_matrix = Matrix(nu, nu, lambda x,y: syndromes[x+y])
+        syndrome_matrix = Matrix(nu, nu, lambda a,b: syndromes[a+b])
         detection = syndrome_matrix.det() % reducing
         if detection == 0:
             continue
-
-        syndrome_vector = Matrix(nu, 1, lambda x,_: -syndromes[nu+x])
-        augmented = syndrome_matrix.col_insert(i, syndrome_vector)
+        
+        syndrome_vector = Matrix(nu, 1, lambda a,_: -syndromes[nu+a])
+        augmented = syndrome_matrix.col_insert(nu, syndrome_vector)
         locator = augmented.rref(pivots=False).col(nu)
         result = []
         for row in range(nu):
-            result.append(expand_expression(locator[row]))
+            result.append(expand_expression(locator[row], z, generator, reducing))
 
         return result
 
 
-def find_error_pos(locator):
-    print(locator)
-    locator_poly = Poly(1, x, domain=GF(2))
+def find_error_pos(locator, alpha, generator, reducing):
+    locator_poly = Poly(1, x, domain=GF(2)[z])
     for i, lambda_i in enumerate(locator[::-1], start=1):
-        locator_poly += lambda_i * Poly(x**i, x, domain=GF(2))
-    
-    powers = []
-    for power in alphapowers:
-        root = substitute(locator_poly, Poly(power, x, domain=GF(2))) % reducing
-        if root == 0:
-            inverse = find_inverse(Poly(power, x, domain=GF(2)))
-            powers.append(alphapowers[tuple((inverse%reducing).all_coeffs())])
+        locator_poly += Poly(lambda_i%reducing, x, domain=GF(2)[z]) * Poly(x**i, x, domain=GF(2)[z])
+    roots = find_all_roots(locator_poly, alpha, reducing)
 
-    print(powers)
-    return powers
+    alpha_powers = find_all_powers(alpha, reducing)
+    result = []
+    for root in roots:
+        inverse = find_inverse(root, reducing, z) % reducing
+        inverse_coefficients = inverse.all_coeffs()
+        result.append(alpha_powers[tuple(inverse_coefficients)])
+    return result
 
 
-def decode_bch(bits):
-    encoded = Poly(bits, x, domain=GF(2))
+def decode_correct_code(encoded, generator):
+    decoded, _ = div(encoded, generator)
+    return decoded.all_coeffs()
 
+
+def find_syndromes(encoded, alpha, reducing, t):
     syndromes = []
     for i in range(1,2*t+1):
-        syndrome = substitute(encoded, x**i) % reducing
+        syndrome = substitute(encoded, alpha**i)
+        syndrome %= reducing
         syndromes.append(syndrome)
+    return syndromes
+
+
+def decode_bch(bits, generator, alpha, reducing, t):
+    encoded = Poly(bits, x, domain=GF(2))
+
+    syndromes = find_syndromes(encoded, alpha, reducing, t)
 
     if all((syndrome == 0 for syndrome in syndromes)):
-        decoded, _ = div(encoded, generator)
-        return decoded.all_coeffs()
-    
-    locator = find_error_locator(syndromes)
-    errors = find_error_pos(locator)
+        return decode_correct_code(encoded, generator)
+
+    locator = find_error_locator(syndromes, generator, reducing, t)
+    errors = find_error_pos(locator, alpha, generator, reducing)
+
+    for error in errors:
+        encoded += Poly(x**error, x, domain=GF(2))
+    return decode_correct_code(encoded, generator)
 
 
-if __name__ == "__main__":
+def main():
     m = 3
     n = 2**m - 1
     t = 2
-    
+
     reducing = Poly(z**4 + z + 1, domain=GF(2))
     alpha = Poly(z, z, domain=GF(2))
-
     generator = find_generator(alpha, reducing, t)
-    print(generator)
 
-    alphapowers = find_all_powers(alpha, reducing)
-    # print(alphapowers)
-    # print(alphapowers)
-    # for power in alphapowers:
-    #     print(alphapowers[power], Poly(power, x, domain=GF(2)), substitute(generator, Poly(power, x, domain=GF(2)))%reducing)
-
-    #print(encode_bch([1,0,1,1,1,0]))
-    #print(decode_bch([0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0]))
-    #print(decode_bch([0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0]))
-    #                 ^15th pos      ^--^ errors (9 & 10)          ^ 0th position
-    #print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0]))
+    print(encode_bch([1, 0, 1, 1, 1, 0], generator))
+    print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
+    print(decode_bch([1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
+    #                       10 ^  ^ 9
+    print(decode_bch([0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0], generator, alpha, reducing, t))
+    #                                   ^ 9                  ^ 2
+    print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
     #                          ^ 12           ^ 7
+    # print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1], generator, alpha, reducing, t))
+    #                                                              ^0
 
-
-    # correct = [0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0]
+    # correct = [1, 0, 1, 1, 1, 0]
+    # encoded = encode_bch(correct, generator)
     # # Test all 1-bit errors
-    # for i in range(len(correct)-1):
-    #         incorrect = correct[:i]+[1-correct[i]]+correct[i+1:]
-    #         decode_bch(incorrect)
-    # print("---")
+    # for i in range(len(encoded)-1):
+    #         error = encoded[:i]+[1-encoded[i]]+encoded[i+1:]
+    #         corrected = decode_bch(error, generator, alpha, reducing, t)
+    #         assert(corrected == correct)
+
     # # Test all 2-bit errors
-    # for i in range(len(correct)-1):
-    #     for j in range(i+1,len(correct)):
-    #         incorrect = correct[:i]+[1-correct[i]]+correct[i+1:j]+[1-correct[j]]+correct[j+1:]
-    #         decode_bch(incorrect)
-    
+    # for i in range(len(encoded)-1):
+    #     for j in range(i+1,len(encoded)):
+    #         error = encoded[:i]+[1-encoded[i]]+encoded[i+1:j]+[1-encoded[j]]+encoded[j+1:]
+    #         corrected = decode_bch(error, generator, alpha, reducing, t)
+    #         assert(corrected == correct)
+
+
+if __name__ == "__main__":
+    main()
