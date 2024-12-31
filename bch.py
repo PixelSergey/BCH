@@ -88,7 +88,7 @@ def find_inverse(polynomial, reducing, var):
 
 def find_all_powers(element, reducing):
     result = dict()
-    for i in range(1, 16):
+    for i in range(0, 15):
         power = Poly(element**i, z, domain=GF(2)) % reducing
         if tuple(power.all_coeffs()) in result:
             continue
@@ -162,7 +162,6 @@ def decode_bch(bits, generator, alpha, reducing, t):
     encoded = Poly(bits, x, domain=GF(2))
 
     syndromes = find_syndromes(encoded, alpha, reducing, t)
-
     if all((syndrome == 0 for syndrome in syndromes)):
         return decode_correct_code(encoded, generator)
 
@@ -183,31 +182,35 @@ def main():
     alpha = Poly(z, z, domain=GF(2))
     generator = find_generator(alpha, reducing, t)
 
-    print(encode_bch([1, 0, 1, 1, 1, 0], generator))
-    print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
-    print(decode_bch([1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
-    #                       10 ^  ^ 9
-    print(decode_bch([0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0], generator, alpha, reducing, t))
-    #                                   ^ 9                  ^ 2
-    print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
-    #                          ^ 12           ^ 7
-    # print(decode_bch([0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1], generator, alpha, reducing, t))
-    #                                                              ^0
+    # print(encode_bch([1, 0, 1, 1, 1, 0], generator))
+    # print(decode_bch([0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
+    # print(decode_bch([1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
+    # #                       10 ^  ^ 9
+    # print(decode_bch([0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0], generator, alpha, reducing, t))
+    # #                                ^ 9                  ^ 2
+    # print(decode_bch([0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
+    # #                       ^ 12           ^ 7
+    # print(decode_bch([0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1], generator, alpha, reducing, t))
+    #                                                           ^0
 
-    # correct = [1, 0, 1, 1, 1, 0]
-    # encoded = encode_bch(correct, generator)
-    # # Test all 1-bit errors
-    # for i in range(len(encoded)-1):
-    #         error = encoded[:i]+[1-encoded[i]]+encoded[i+1:]
-    #         corrected = decode_bch(error, generator, alpha, reducing, t)
-    #         assert(corrected == correct)
+    correct = [1, 0, 1, 1, 1, 0]
+    encoded = encode_bch(correct, generator)
+    # Test all 1-bit errors
+    for i in range(len(encoded)):
+            error = encoded[:i]+[1-encoded[i]]+encoded[i+1:]
+            corrected = decode_bch(error, generator, alpha, reducing, t)
+            assert(corrected == correct)
 
-    # # Test all 2-bit errors
-    # for i in range(len(encoded)-1):
-    #     for j in range(i+1,len(encoded)):
-    #         error = encoded[:i]+[1-encoded[i]]+encoded[i+1:j]+[1-encoded[j]]+encoded[j+1:]
-    #         corrected = decode_bch(error, generator, alpha, reducing, t)
-    #         assert(corrected == correct)
+    print("All 1-bit errors corrected!")
+
+    # Test all 2-bit errors
+    for i in range(len(encoded)-1):
+        for j in range(i+1,len(encoded)):
+            error = encoded[:i]+[1-encoded[i]]+encoded[i+1:j]+[1-encoded[j]]+encoded[j+1:]
+            corrected = decode_bch(error, generator, alpha, reducing, t)
+            assert(corrected == correct)
+
+    print("All 2-bit errors corrected!")
 
 
 if __name__ == "__main__":
