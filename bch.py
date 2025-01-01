@@ -7,7 +7,7 @@ MT24 mini-project
 
 import random
 import warnings
-from sympy import GF, ZZ, Matrix, Poly, div, Symbol, Add, Mul, Pow, Integer
+from sympy import GF, ZZ, Matrix, Poly, div, Symbol, Add, Mul, Pow, Integer, degree
 from sympy.abc import x, z
 from sympy.polys.galoistools import gf_gcdex, gf_lcm
 
@@ -20,6 +20,16 @@ class BCH:
     On initialisation, constructs the required parameters for the BCH code.
     Encoding can be called using the `encode` function,
     and error-corrected decoding using the `decode` function.
+
+    Attributes:
+        m: The exponent of the Galois field size
+        n: The codeword length
+        t: The number of errors the code is able to correct
+        c: The number of checksum bits in the code
+        k: The number of data bits that can be encoded
+        reducing: The reducing polynomial of the Galois field
+        alpha: A primitive element of the Galois field
+        generator: The generator polynomial used by the BCH code
     """
 
     def __init__(self, m, t):
@@ -35,6 +45,9 @@ class BCH:
 
         self.reducing, self.alpha = self.find_reducing()
         self.generator = self.find_generator()
+
+        self.c = degree(self.generator)
+        self.k = self.n - self.c
 
 
     def find_reducing(self):
@@ -169,7 +182,7 @@ class BCH:
             and exponents of `element` as values
         """
         result = {}
-        for i in range(0, 15):
+        for i in range(0, self.n):
             power = Poly(element**i, z, domain=GF(2)) % self.reducing
             if tuple(power.all_coeffs()) in result:
                 continue
@@ -188,7 +201,7 @@ class BCH:
             These are composed of powers of `alpha` reduced modulo the reducing polynomial.
         """
         roots = []
-        for i in range(1,16):
+        for i in range(1,self.n+1):
             root = self.substitute(polynomial, self.alpha**i) % self.reducing
             if root == 0:
                 roots.append(self.alpha**i % self.reducing)
@@ -204,9 +217,11 @@ class BCH:
         Returns:
             A list containing the bits of the codeword
         """
-        plaintext = Poly(bits, x, domain=GF(2))
-        encoded = plaintext * self.generator
-        return encoded.all_coeffs()
+        normalised = self.fill_data(bits, self.k)
+
+        data = Poly(normalised, x, domain=GF(2))
+        encoded = data * self.generator
+        return self.fill_data(encoded.all_coeffs(), self.n)
 
 
     def decode(self, bits):
@@ -218,7 +233,8 @@ class BCH:
         Returns:
             A list containing the bits of the decoded message, corrected for errors
         """
-        encoded = Poly(bits, x, domain=GF(2))
+        normalised = self.fill_data(bits, self.n)
+        encoded = Poly(normalised, x, domain=GF(2))
 
         syndromes = self.find_syndromes(encoded)
         if all((syndrome == 0 for syndrome in syndromes)):
@@ -229,7 +245,9 @@ class BCH:
 
         for error in errors:
             encoded += Poly(x**error, x, domain=GF(2))
-        return self.decode_correct_code(encoded)
+        decoded = self.decode_correct_code(encoded)
+
+        return self.fill_data(decoded, self.k)
 
 
     def find_syndromes(self, encoded):
@@ -300,6 +318,21 @@ class BCH:
         return result
 
 
+    def fill_data(self, data, length):
+        """Prepend a list of bits with zeroes if the length is too short
+        
+        Args:
+            data: The list of bits to complete with zeroes
+            length: The desired length of the list
+
+        Returns:
+            A list containing the original data prepended with zeroes.
+            If the length of the list is longer than the desired length, an error is thrown.
+        """
+        assert len(data) <= length
+        return [0]*(length-len(data)) + data
+
+
     def decode_correct_code(self, encoded):
         """Given a codeword that is known to be correct, decode it.
         
@@ -311,7 +344,7 @@ class BCH:
         """
         decoded, _ = div(encoded, self.generator)
         result = decoded.all_coeffs()
-        result = [0]*(7-len(result))+result
+
         return result
 
 
@@ -323,7 +356,7 @@ def main():
 
     bch = BCH(4, 2)
 
-    correct = [random.choice((0,1)) for _ in range(7)]
+    correct = [random.choice((0,1)) for _ in range(bch.k)]
     print("Message:", correct)
     encoded = bch.encode(correct)
 
