@@ -185,20 +185,10 @@ def main():
     alpha = Poly(z, z, domain=GF(2))
     generator = find_generator(alpha, reducing, t)
 
-    # print(encode_bch([1, 0, 1, 1, 1, 0], generator))
-    # print(decode_bch([0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
-    # print(decode_bch([1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
-    # #                       10 ^  ^ 9
-    # print(decode_bch([0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0], generator, alpha, reducing, t))
-    # #                                ^ 9                  ^ 2
-    # print(decode_bch([0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0], generator, alpha, reducing, t))
-    # #                       ^ 12           ^ 7
-    # print(decode_bch([0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1], generator, alpha, reducing, t))
-    #                                                           ^0
-
-    correct = [0, 1, 0, 1, 1, 1, 0]
-    # correct = [random.choice((0,1)) for _ in range(7)]
+    correct = [random.choice((0,1)) for _ in range(7)]
+    print("Message:", correct)
     encoded = encode_bch(correct, generator)
+
     # Test all 1-bit errors
     for i in range(len(encoded)):
             error = encoded[:i]+[1-encoded[i]]+encoded[i+1:]
@@ -206,7 +196,6 @@ def main():
             if corrected != correct:
                 print("Mistake:", corrected, "!=", correct)
                 return
-
     print("All 1-bit errors corrected!")
 
     # Test all 2-bit errors
@@ -217,7 +206,6 @@ def main():
             if corrected != correct:
                 print("Mistake:", corrected, "!=", correct)
                 return
-
     print("All 2-bit errors corrected!")
 
 
