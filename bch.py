@@ -1,3 +1,4 @@
+import random
 from sympy import GF, ZZ, Matrix, poly, Poly, div, Symbol, Add, Mul, Pow, Integer
 from sympy.abc import x, z
 from sympy.polys.galoistools import gf_gcdex, gf_lcm
@@ -98,7 +99,7 @@ def find_all_powers(element, reducing):
 
 def find_all_roots(polynomial, alpha, reducing):
     roots = []
-    for i in range(1,17):
+    for i in range(1,16):
         root = substitute(polynomial, alpha**i) % reducing
         if root == 0:
             roots.append(alpha**i % reducing)
@@ -146,7 +147,9 @@ def find_error_pos(locator, alpha, generator, reducing):
 
 def decode_correct_code(encoded, generator):
     decoded, _ = div(encoded, generator)
-    return decoded.all_coeffs()
+    result = decoded.all_coeffs()
+    result = [0]*(7-len(result))+result
+    return result
 
 
 def find_syndromes(encoded, alpha, reducing, t):
@@ -193,13 +196,16 @@ def main():
     # print(decode_bch([0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1], generator, alpha, reducing, t))
     #                                                           ^0
 
-    correct = [1, 0, 1, 1, 1, 0]
+    correct = [0, 1, 0, 1, 1, 1, 0]
+    # correct = [random.choice((0,1)) for _ in range(7)]
     encoded = encode_bch(correct, generator)
     # Test all 1-bit errors
     for i in range(len(encoded)):
             error = encoded[:i]+[1-encoded[i]]+encoded[i+1:]
             corrected = decode_bch(error, generator, alpha, reducing, t)
-            assert(corrected == correct)
+            if corrected != correct:
+                print("Mistake:", corrected, "!=", correct)
+                return
 
     print("All 1-bit errors corrected!")
 
@@ -208,7 +214,9 @@ def main():
         for j in range(i+1,len(encoded)):
             error = encoded[:i]+[1-encoded[i]]+encoded[i+1:j]+[1-encoded[j]]+encoded[j+1:]
             corrected = decode_bch(error, generator, alpha, reducing, t)
-            assert(corrected == correct)
+            if corrected != correct:
+                print("Mistake:", corrected, "!=", correct)
+                return
 
     print("All 2-bit errors corrected!")
 
