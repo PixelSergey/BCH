@@ -9,7 +9,7 @@ import random
 import warnings
 from sympy import GF, ZZ, Matrix, Poly, div, Symbol, Add, Mul, Pow, Integer, degree
 from sympy.abc import x, z
-from sympy.polys.galoistools import gf_gcdex, gf_lcm
+from sympy.polys.galoistools import gf_gcdex, gf_lcm, gf_irreducible
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -43,7 +43,8 @@ class BCH:
         self.n = 2**m - 1
         self.t = t
 
-        self.reducing, self.alpha = self.find_reducing()
+        self.reducing = self.find_reducing()
+        self.alpha = Poly(z, z, domain=GF(2))
         self.generator = self.find_generator()
 
         self.c = degree(self.generator)
@@ -51,12 +52,20 @@ class BCH:
 
 
     def find_reducing(self):
-        """Find a reducing polynomial for the Galois field
+        """Find a primitive polynomial for the Galois field
         
         Returns:
-            A default value for the specific example used
+            A primitive polynomial for the Galois field
         """
-        return Poly(z**4 + z + 1, domain=GF(2)), Poly(z, z, domain=GF(2))
+        while True:
+            irreducible = Poly(gf_irreducible(self.m, 2, ZZ), z, domain=GF(2))
+            for i in range(1, self.n):
+                test_poly = Poly(z**i - 1, z, domain=GF(2))
+                _, remainder = div(test_poly, irreducible)
+                if remainder == 0:
+                    break
+            else:
+                return irreducible
 
 
     def find_generator(self):
