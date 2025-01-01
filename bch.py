@@ -1,13 +1,32 @@
+"""BCH encoding and decoding project.
+
+University of Oxford
+Information Theory
+MT24 mini-project
+"""
+
 import random
+import warnings
 from sympy import GF, ZZ, Matrix, Poly, div, Symbol, Add, Mul, Pow, Integer
 from sympy.abc import x, z
 from sympy.polys.galoistools import gf_gcdex, gf_lcm
-import warnings
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 class BCH:
+    """BCH code properties and functionality.
+
+    Cont
+    """
+
     def __init__(self, m, t):
+        """Initialises the BCH code with the given parameters.
+
+        Args:
+            m: The exponent of the Galois field size. The codeword length is m**2-1
+            t: The number of errors to correct        
+        """
         self.m = m
         self.n = 2**m - 1
         self.t = t
@@ -17,10 +36,20 @@ class BCH:
 
 
     def find_reducing(self):
+        """Find a reducing polynomial for the Galois field
+        
+        Returns:
+            A default value for the specific example used
+        """
         return Poly(z**4 + z + 1, domain=GF(2)), Poly(z, z, domain=GF(2))
 
 
     def find_generator(self):
+        """Find a generator polynomial for the Galois field
+        
+        Returns:
+            A generator polynomial based on the reducing polynomial and alpha
+        """
         generator = Poly(1, x, domain=GF(2))
         for i in range(1, 2*self.t):
             current = self.find_minimal_polynomial(self.alpha**i)
@@ -29,6 +58,14 @@ class BCH:
 
 
     def find_minimal_polynomial(self, element):
+        """Find a minimal polynomial (mod the reducing polynomial) for a given element.
+        
+        Args:
+            element: The element to find a minimal polynomial for. Usually a power of alpha.
+        
+        Returns:
+            A minimal polynomial for the element
+        """
         seen = set()
         i = 0
         result = Poly(1, x)
@@ -49,6 +86,14 @@ class BCH:
 
 
     def expand_expression(self, expression):
+        """Expands an Expr type by evaluating all operations in the Galois field
+
+        Args:
+            expression: An Expr type to expand
+        
+        Returns:
+            a Poly representing the evaluated expression
+        """
         if isinstance(expression, Symbol):
             return Poly(expression, z, domain=GF(2)) % self.reducing
 
@@ -80,12 +125,29 @@ class BCH:
 
 
     def find_inverse(self, polynomial):
+        """Finds the inverse of a polynomial modulo the reducing polynomial
+
+        Args:
+            polynomial: The polynomial to find the inverse for
+        
+        Returns:
+            The inverse of the polynomial
+        """
         inv, _, gcd = gf_gcdex(polynomial.all_coeffs(), self.reducing.all_coeffs(), 2, ZZ)
         assert gcd == [1]
         return Poly(inv, z, domain=GF(2))
 
 
     def substitute(self, polynomial, substitution):
+        """Substitute a polynomial into the variables of another.
+
+        Args:
+            polynomial: The polynomial to substitute into. This will have its variables replaced.
+            substitution: The polynomial to insert
+        
+        Returns:
+            The evaluated expression `polynomial(substitution(z))`
+        """
         result = Poly(0, z, domain=GF(2))
         for i, coeff in enumerate(polynomial.all_coeffs()[::-1]):
             result += Poly(coeff, z, domain=GF(2)) * Poly(substitution**i, z, domain=GF(2))
@@ -93,6 +155,17 @@ class BCH:
 
 
     def find_all_powers(self, element):
+        """Find all powers of an element in the Galois field.
+        
+        This is useful for looking up powers based on an expression later on.
+
+        Args:
+            element: The element to find powers for, usually alpha
+
+        Returns:
+            A dict containing the coefficients of polynomials as keys
+            and exponents of `element` as values
+        """
         result = {}
         for i in range(0, 15):
             power = Poly(element**i, z, domain=GF(2)) % self.reducing
@@ -103,6 +176,15 @@ class BCH:
 
 
     def find_all_roots(self, polynomial):
+        """Find all the roots of a polynomial in the Galois field.
+        
+        Args:
+            polynomial: The desired polynomial
+        
+        Returns:
+            A list of roots in the Galois field.
+            These are composed of powers of `alpha` reduced modulo the reducing polynomial.
+        """
         roots = []
         for i in range(1,16):
             root = self.substitute(polynomial, self.alpha**i) % self.reducing
@@ -112,6 +194,15 @@ class BCH:
 
 
     def find_error_locator(self, syndromes):
+        """Find the error locator polynomial given syndromes.
+
+        Args:
+            syndromes: A list of syndromes obtained from `find_syndromes`
+
+        Returns:
+            An error locator vector,
+            where the entries are coefficients of the error locator polynomial
+        """
         for i in range(self.t):
             nu = self.t-i  # Number of errors
             syndrome_matrix = Matrix(nu, nu, lambda a,b: syndromes[a+b])
@@ -130,6 +221,14 @@ class BCH:
 
 
     def find_error_pos(self, locator):
+        """Find the error positions based on the error locator vector.
+        
+        Args:
+            locator: The error locator vector obtained from `find_error_locator`
+        
+        Returns:
+            A list of positions where errors have occurred in the codeword
+        """
         locator_poly = Poly(1, x, domain=GF(2)[z])
         for i, lambda_i in enumerate(locator[::-1], start=1):
             locator_poly += Poly(lambda_i%self.reducing, x, domain=GF(2)[z]) * Poly(x**i, x, domain=GF(2)[z])
@@ -145,6 +244,14 @@ class BCH:
 
 
     def decode_correct_code(self, encoded):
+        """Given a codeword that is known to be correct, decode it.
+        
+        Args:
+            encoded: A polynomial which has had its errors corrected
+
+        Returns:
+            A list containing the decoded codeword
+        """
         decoded, _ = div(encoded, self.generator)
         result = decoded.all_coeffs()
         result = [0]*(7-len(result))+result
@@ -152,6 +259,15 @@ class BCH:
 
 
     def find_syndromes(self, encoded):
+        """Find the syndromes of a codeword
+
+        Args:
+            A polynomial representing any codeword
+        
+        Returns:
+            A list of syndromes of the polynomial.
+            If no errors have occurred, all syndromes are zero.
+        """
         syndromes = []
         for i in range(1,2*self.t+1):
             syndrome = self.substitute(encoded, self.alpha**i)
@@ -161,12 +277,28 @@ class BCH:
 
 
     def encode(self, bits):
+        """Encode a message using the generated BCH code.
+
+        Args:
+            bits: A list containing the bits to encode
+        
+        Returns:
+            A list containing the bits of the codeword
+        """
         plaintext = Poly(bits, x, domain=GF(2))
         encoded = plaintext * self.generator
         return encoded.all_coeffs()
 
 
     def decode(self, bits):
+        """Decode a codeword using the generated BCH code.
+
+        Args:
+            bits: A list containing the bits of the codeword
+        
+        Returns:
+            A list containing the bits of the decoded message, corrected for errors
+        """
         encoded = Poly(bits, x, domain=GF(2))
 
         syndromes = self.find_syndromes(encoded)
@@ -182,6 +314,11 @@ class BCH:
 
 
 def main():
+    """
+    Code to test BCH functionality.
+    Generates a BCH code, sends a random message, and tries to correct every possible error.
+    """
+
     bch = BCH(4, 2)
 
     correct = [random.choice((0,1)) for _ in range(7)]
