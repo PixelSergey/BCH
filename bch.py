@@ -17,7 +17,9 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 class BCH:
     """BCH code properties and functionality.
 
-    Cont
+    On initialisation, constructs the required parameters for the BCH code.
+    Encoding can be called using the `encode` function,
+    and error-corrected decoding using the `decode` function.
     """
 
     def __init__(self, m, t):
@@ -193,6 +195,61 @@ class BCH:
         return roots
 
 
+    def encode(self, bits):
+        """Encode a message using the generated BCH code.
+
+        Args:
+            bits: A list containing the bits to encode
+        
+        Returns:
+            A list containing the bits of the codeword
+        """
+        plaintext = Poly(bits, x, domain=GF(2))
+        encoded = plaintext * self.generator
+        return encoded.all_coeffs()
+
+
+    def decode(self, bits):
+        """Decode a codeword using the generated BCH code.
+
+        Args:
+            bits: A list containing the bits of the codeword
+        
+        Returns:
+            A list containing the bits of the decoded message, corrected for errors
+        """
+        encoded = Poly(bits, x, domain=GF(2))
+
+        syndromes = self.find_syndromes(encoded)
+        if all((syndrome == 0 for syndrome in syndromes)):
+            return self.decode_correct_code(encoded)
+
+        locator = self.find_error_locator(syndromes)
+        errors = self.find_error_pos(locator)
+
+        for error in errors:
+            encoded += Poly(x**error, x, domain=GF(2))
+        return self.decode_correct_code(encoded)
+
+
+    def find_syndromes(self, encoded):
+        """Find the syndromes of a codeword
+
+        Args:
+            A polynomial representing any codeword
+        
+        Returns:
+            A list of syndromes of the polynomial.
+            If no errors have occurred, all syndromes are zero.
+        """
+        syndromes = []
+        for i in range(1,2*self.t+1):
+            syndrome = self.substitute(encoded, self.alpha**i)
+            syndrome %= self.reducing
+            syndromes.append(syndrome)
+        return syndromes
+
+
     def find_error_locator(self, syndromes):
         """Find the error locator polynomial given syndromes.
 
@@ -256,61 +313,6 @@ class BCH:
         result = decoded.all_coeffs()
         result = [0]*(7-len(result))+result
         return result
-
-
-    def find_syndromes(self, encoded):
-        """Find the syndromes of a codeword
-
-        Args:
-            A polynomial representing any codeword
-        
-        Returns:
-            A list of syndromes of the polynomial.
-            If no errors have occurred, all syndromes are zero.
-        """
-        syndromes = []
-        for i in range(1,2*self.t+1):
-            syndrome = self.substitute(encoded, self.alpha**i)
-            syndrome %= self.reducing
-            syndromes.append(syndrome)
-        return syndromes
-
-
-    def encode(self, bits):
-        """Encode a message using the generated BCH code.
-
-        Args:
-            bits: A list containing the bits to encode
-        
-        Returns:
-            A list containing the bits of the codeword
-        """
-        plaintext = Poly(bits, x, domain=GF(2))
-        encoded = plaintext * self.generator
-        return encoded.all_coeffs()
-
-
-    def decode(self, bits):
-        """Decode a codeword using the generated BCH code.
-
-        Args:
-            bits: A list containing the bits of the codeword
-        
-        Returns:
-            A list containing the bits of the decoded message, corrected for errors
-        """
-        encoded = Poly(bits, x, domain=GF(2))
-
-        syndromes = self.find_syndromes(encoded)
-        if all((syndrome == 0 for syndrome in syndromes)):
-            return self.decode_correct_code(encoded)
-
-        locator = self.find_error_locator(syndromes)
-        errors = self.find_error_pos(locator)
-
-        for error in errors:
-            encoded += Poly(x**error, x, domain=GF(2))
-        return self.decode_correct_code(encoded)
 
 
 def main():
