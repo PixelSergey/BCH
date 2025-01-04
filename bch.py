@@ -29,27 +29,27 @@ class BCH:
         t: The number of errors the code is able to correct
         c: The number of checksum bits in the code
         k: The number of data bits that can be encoded
-        reducing: The reducing polynomial of the Galois field
+        primitive: The primitive polynomial of the Galois field
         alpha: A primitive element of the Galois field
         generator: The generator polynomial used by the BCH code
     """
 
-    def __init__(self, m, t, reducing=None):
+    def __init__(self, m, t, primitive=None):
         """Initialises the BCH code with the given parameters.
 
         Args:
             m: The exponent of the Galois field size. The codeword length is m**2-1
             t: The number of errors to correct 
-            reducing: An integer representing a reducing polynomial (optional)       
+            primitive: An integer representing a primitive polynomial (optional)       
         """
         self.m = m
         self.n = 2**m - 1
         self.t = t
 
-        if not reducing:
-            self.reducing = self.find_reducing()
+        if not primitive:
+            self.primitive = self.find_primitive()
         else:
-            self.reducing = Poly([int(x) for x in reducing], z, domain=GF(2))
+            self.primitive = Poly([int(x) for x in primitive], z, domain=GF(2))
         self.alpha = Poly(z, z, domain=GF(2))
         self.generator = self.find_generator()
 
@@ -57,7 +57,7 @@ class BCH:
         self.k = self.n - self.c
 
 
-    def find_reducing(self):
+    def find_primitive(self):
         """Find a primitive polynomial for the Galois field
         
         Returns:
@@ -78,7 +78,7 @@ class BCH:
         """Find a generator polynomial for the Galois field
         
         Returns:
-            A generator polynomial based on the reducing polynomial and alpha
+            A generator polynomial based on the primitive polynomial and alpha
         """
         generator = Poly(1, x, domain=GF(2))
         for i in range(1, 2*self.t):
@@ -88,7 +88,7 @@ class BCH:
 
 
     def find_minimal_polynomial(self, element):
-        """Find a minimal polynomial (mod the reducing polynomial) for a given element.
+        """Find a minimal polynomial (mod the primitive polynomial) for a given element.
         
         Args:
             element: The element to find a minimal polynomial for. Usually a power of alpha.
@@ -100,7 +100,7 @@ class BCH:
         i = 0
         result = Poly(1, x)
         while True:
-            current = Poly(element**(2**i), z) % self.reducing
+            current = Poly(element**(2**i), z) % self.primitive
             if current in seen:
                 break
             result *= Poly(x, x) - current.set_domain(ZZ)
@@ -108,7 +108,7 @@ class BCH:
             i += 1
 
         result = Poly(result, x, domain=GF(2)[z])
-        reduced = [self.expand_expression(coefficient)%self.reducing for coefficient in result.all_coeffs()]
+        reduced = [self.expand_expression(coefficient)%self.primitive for coefficient in result.all_coeffs()]
         assert(all(coefficient in (0,1) for coefficient in reduced))
 
         result = Poly(reduced, x, domain=GF(2))
@@ -125,37 +125,37 @@ class BCH:
             a Poly representing the evaluated expression
         """
         if isinstance(expression, Symbol):
-            return Poly(expression, z, domain=GF(2)) % self.reducing
+            return Poly(expression, z, domain=GF(2)) % self.primitive
 
         if isinstance(expression, Integer):
-            return Poly(expression, z, domain=GF(2)) % self.reducing
+            return Poly(expression, z, domain=GF(2)) % self.primitive
 
         if isinstance(expression, Mul):
             result = Poly(1, z, domain=GF(2))
             for term in expression.args:
                 result *= self.expand_expression(term)
-            return result % self.reducing
+            return result % self.primitive
 
         if isinstance(expression, Add):
             result = Poly(0, z, domain=GF(2))
             for term in expression.args:
                 result += self.expand_expression(term)
-            return result % self.reducing
+            return result % self.primitive
 
         if isinstance(expression, Pow):
             base, exponent = expression.args
             base = self.expand_expression(base)
             exponent = int(exponent)
             if exponent < 0:
-                assert self.reducing is not None
+                assert self.primitive is not None
                 base = self.find_inverse(base)
                 exponent = abs(exponent)
 
-            return Poly(base**exponent, z, domain=GF(2)) % self.reducing
+            return Poly(base**exponent, z, domain=GF(2)) % self.primitive
 
 
     def find_inverse(self, polynomial):
-        """Finds the inverse of a polynomial modulo the reducing polynomial
+        """Finds the inverse of a polynomial modulo the primitive polynomial
 
         Args:
             polynomial: The polynomial to find the inverse for
@@ -163,7 +163,7 @@ class BCH:
         Returns:
             The inverse of the polynomial
         """
-        inv, _, gcd = gf_gcdex(polynomial.all_coeffs(), self.reducing.all_coeffs(), 2, ZZ)
+        inv, _, gcd = gf_gcdex(polynomial.all_coeffs(), self.primitive.all_coeffs(), 2, ZZ)
         assert gcd == [1]
         return Poly(inv, z, domain=GF(2))
 
@@ -198,7 +198,7 @@ class BCH:
         """
         result = {}
         for i in range(0, self.n):
-            power = Poly(element**i, z, domain=GF(2)) % self.reducing
+            power = Poly(element**i, z, domain=GF(2)) % self.primitive
             if tuple(power.all_coeffs()) in result:
                 continue
             result[tuple(power.all_coeffs())] = i
@@ -213,13 +213,13 @@ class BCH:
         
         Returns:
             A list of roots in the Galois field.
-            These are composed of powers of `alpha` reduced modulo the reducing polynomial.
+            These are composed of powers of `alpha` reduced modulo the primitive polynomial.
         """
         roots = []
         for i in range(1,self.n+1):
-            root = self.substitute(polynomial, self.alpha**i) % self.reducing
+            root = self.substitute(polynomial, self.alpha**i) % self.primitive
             if root == 0:
-                roots.append(self.alpha**i % self.reducing)
+                roots.append(self.alpha**i % self.primitive)
         return roots
 
 
@@ -277,7 +277,7 @@ class BCH:
         syndromes = []
         for i in range(1,2*self.t+1):
             syndrome = self.substitute(encoded, self.alpha**i)
-            syndrome %= self.reducing
+            syndrome %= self.primitive
             syndromes.append(syndrome)
         return syndromes
 
@@ -295,7 +295,7 @@ class BCH:
         for i in range(self.t):
             nu = self.t-i  # Number of errors
             syndrome_matrix = Matrix(nu, nu, lambda a,b: syndromes[a+b])
-            detection = syndrome_matrix.det() % self.reducing
+            detection = syndrome_matrix.det() % self.primitive
             if detection == 0:
                 continue
 
@@ -320,13 +320,13 @@ class BCH:
         """
         locator_poly = Poly(1, x, domain=GF(2)[z])
         for i, lambda_i in enumerate(locator[::-1], start=1):
-            locator_poly += Poly(lambda_i%self.reducing, x, domain=GF(2)[z]) * Poly(x**i, x, domain=GF(2)[z])
+            locator_poly += Poly(lambda_i%self.primitive, x, domain=GF(2)[z]) * Poly(x**i, x, domain=GF(2)[z])
         roots = self.find_all_roots(locator_poly)
 
         alpha_powers = self.find_all_powers(self.alpha)
         result = []
         for root in roots:
-            inverse = self.find_inverse(root) % self.reducing
+            inverse = self.find_inverse(root) % self.primitive
             inverse_coefficients = inverse.all_coeffs()
             result.append(alpha_powers[tuple(inverse_coefficients)])
         return result
@@ -393,14 +393,14 @@ def main():
     parser = argparse.ArgumentParser(prog="BCH")
     parser.add_argument("-m", "--exponent", required=True)
     parser.add_argument("-t", "--errors-corrected", required=True)
-    parser.add_argument("-r", "--reducing")
+    parser.add_argument("-p", "--primitive")
     data = parser.add_mutually_exclusive_group()
     data.add_argument("-e", "--encode")
     data.add_argument("-d", "--decode")
     data.add_argument("-x", "--test", action="store_true")
     args = parser.parse_args(sys.argv[1:])
 
-    bch = BCH(int(args.exponent), int(args.errors_corrected), reducing=args.reducing)
+    bch = BCH(int(args.exponent), int(args.errors_corrected), primitive=args.primitive)
     if args.test:
         test(bch)
 
@@ -412,8 +412,8 @@ def main():
         chunks = [bitstring[bch.k*i:bch.k*(i+1)] for i in range((len(bitstring) + bch.k - 1) // bch.k)]
         result = [bch.encode(chunk) for chunk in chunks]
         print("".join(["".join([str(bit) for bit in chunk]) for chunk in result]))
-        if not args.reducing:
-            print("Reducing:", "".join(str(x) for x in bch.reducing.all_coeffs()))
+        if not args.primitive:
+            print("primitive:", "".join(str(x) for x in bch.primitive.all_coeffs()))
 
     elif args.decode:
         message = args.decode
