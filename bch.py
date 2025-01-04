@@ -5,7 +5,9 @@ Information Theory
 MT24 mini-project
 """
 
+import argparse
 import random
+import sys
 import warnings
 from sympy import GF, ZZ, Matrix, Poly, div, Symbol, Add, Mul, Pow, Integer, degree
 from sympy.abc import x, z
@@ -32,18 +34,22 @@ class BCH:
         generator: The generator polynomial used by the BCH code
     """
 
-    def __init__(self, m, t):
+    def __init__(self, m, t, reducing=None):
         """Initialises the BCH code with the given parameters.
 
         Args:
             m: The exponent of the Galois field size. The codeword length is m**2-1
-            t: The number of errors to correct        
+            t: The number of errors to correct 
+            reducing: An integer representing a reducing polynomial (optional)       
         """
         self.m = m
         self.n = 2**m - 1
         self.t = t
 
-        self.reducing = self.find_reducing()
+        if not reducing:
+            self.reducing = self.find_reducing()
+        else:
+            self.reducing = Poly([int(x) for x in reducing], z, domain=GF(2))
         self.alpha = Poly(z, z, domain=GF(2))
         self.generator = self.find_generator()
 
@@ -254,9 +260,8 @@ class BCH:
 
         for error in errors:
             encoded += Poly(x**error, x, domain=GF(2))
-        decoded = self.decode_correct_code(encoded)
 
-        return self.fill_data(decoded, self.k)
+        return self.decode_correct_code(encoded)
 
 
     def find_syndromes(self, encoded):
@@ -353,17 +358,14 @@ class BCH:
         """
         decoded, _ = div(encoded, self.generator)
         result = decoded.all_coeffs()
+        return self.fill_data(result, self.k)
 
-        return result
 
-
-def main():
+def test(bch):
     """
     Code to test BCH functionality.
     Generates a BCH code, sends a random message, and tries to correct every possible error.
     """
-
-    bch = BCH(4, 2)
 
     correct = [random.choice((0,1)) for _ in range(bch.k)]
     print("Message:", correct)
@@ -385,6 +387,43 @@ def main():
             assert corrected == correct
 
     print("All 2-bit errors corrected!")
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="BCH")
+    parser.add_argument("-m", "--exponent", required=True)
+    parser.add_argument("-t", "--errors-corrected", required=True)
+    parser.add_argument("-r", "--reducing")
+    data = parser.add_mutually_exclusive_group()
+    data.add_argument("-e", "--encode")
+    data.add_argument("-d", "--decode")
+    data.add_argument("-x", "--test", action="store_true")
+    args = parser.parse_args(sys.argv[1:])
+
+    bch = BCH(int(args.exponent), int(args.errors_corrected), reducing=args.reducing)
+    if args.test:
+        test(bch)
+
+    elif args.encode:
+        message = args.encode.encode("ascii")
+        bitstring = [int(a) for a in "".join([bin(character)[2:] for character in message])]
+        padding_length = -len(bitstring) % bch.k
+        bitstring += [0]*padding_length
+        chunks = [bitstring[bch.k*i:bch.k*(i+1)] for i in range((len(bitstring) + bch.k - 1) // bch.k)]
+        result = [bch.encode(chunk) for chunk in chunks]
+        print("".join(["".join([str(bit) for bit in chunk]) for chunk in result]))
+        if not args.reducing:
+            print("Reducing:", "".join(str(x) for x in bch.reducing.all_coeffs()))
+
+    elif args.decode:
+        message = args.decode
+        bitstring = [int(a) for a in message]
+        chunks = [bitstring[bch.n*i:bch.n*(i+1)] for i in range((len(bitstring) + bch.n - 1) // bch.n)]
+        decoded = [bch.decode(chunk) for chunk in chunks]
+        decoded_string = "".join(["".join([str(bit) for bit in chunk]) for chunk in decoded])
+        decoded_chunks = [decoded_string[7*i:7*(i+1)] for i in range((len(decoded_string) + 7 - 1) // 7)]
+        result = bytes([int(chunk, 2) for chunk in decoded_chunks])
+        print(result.decode("ascii"))
 
 
 if __name__ == "__main__":
