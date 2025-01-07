@@ -406,7 +406,7 @@ def main():
 
     elif args.encode:
         message = args.encode.encode("ascii")
-        bitstring = [int(a) for a in "".join([bin(character)[2:] for character in message])]
+        bitstring = [int(a) for a in "".join([bin(character)[2:].zfill(7) for character in message])]
         padding_length = -len(bitstring) % bch.k
         bitstring += [0]*padding_length
         chunks = [bitstring[bch.k*i:bch.k*(i+1)] for i in range((len(bitstring) + bch.k - 1) // bch.k)]
@@ -421,6 +421,8 @@ def main():
         chunks = [bitstring[bch.n*i:bch.n*(i+1)] for i in range((len(bitstring) + bch.n - 1) // bch.n)]
         decoded = [bch.decode(chunk) for chunk in chunks]
         decoded_string = "".join(["".join([str(bit) for bit in chunk]) for chunk in decoded])
+        padding_length = len(decoded_string) % 7
+        decoded_string = decoded_string[:-padding_length] if padding_length>0 else decoded_string
         decoded_chunks = [decoded_string[7*i:7*(i+1)] for i in range((len(decoded_string) + 7 - 1) // 7)]
         result = bytes([int(chunk, 2) for chunk in decoded_chunks])
         print(result.decode("ascii"))
