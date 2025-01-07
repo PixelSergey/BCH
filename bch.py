@@ -294,12 +294,12 @@ class BCH:
         """
         for i in range(self.t):
             nu = self.t-i  # Number of errors
-            syndrome_matrix = Matrix(nu, nu, lambda a,b: syndromes[a+b])
-            detection = syndrome_matrix.det() % self.primitive
+            syndrome_matrix = Matrix(nu, nu, lambda a,b: syndromes[a+b].as_expr())
+            detection = Poly(syndrome_matrix.det(), z, domain=GF(2)) % self.primitive
             if detection == 0:
                 continue
 
-            syndrome_vector = Matrix(nu, 1, lambda a,_: -syndromes[nu+a])
+            syndrome_vector = Matrix(nu, 1, lambda a,_: -syndromes[nu+a].as_expr())
             augmented = syndrome_matrix.col_insert(nu, syndrome_vector)
             locator = augmented.rref(pivots=False).col(nu)
             result = []
